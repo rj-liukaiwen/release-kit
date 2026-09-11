@@ -1,0 +1,93 @@
+name: Release an existing verified build
+on:
+  workflow_call:
+    inputs:
+      build_run:
+        required: true
+        type: string
+      mode:
+        default: draft
+        type: string
+      toolkit_sha:
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: promote-${{ github.repository }}-${{ inputs.build_run }}
+  cancel-in-progress: false
+jobs:
+  promote:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: read
+    env:
+      BUILD_RUN: ${{ inputs.build_run }}
+      RELEASE_MODE: ${{ inputs.mode }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: rj-liukaiwen/release-kit
+          ref: ${{ inputs.toolkit_sha }}
+          path: inspector
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24.12.0'
+      - name: Require a successful build in this repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node inspector/bin/inspect-run.mjs
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: release-manifest-${{ inputs.build_run }}
+          path: .release-out/source-manifest
+          run-id: ${{ inputs.build_run }}
+          github-token: ${{ github.token }}
+      - name: Validate source manifest
+        id: manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node inspector/bin/inspect-run.mjs manifest
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ steps.manifest.outputs.sha }}
+          path: project
+          persist-credentials: false
+      - name: Use the exact toolkit that verified the build
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: rj-liukaiwen/release-kit
+          ref: ${{ steps.manifest.outputs.toolkit }}
+          path: project/.release-kit
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: release-*-*-${{ inputs.build_run }}
+          path: project/.release-out/downloaded
+          run-id: ${{ inputs.build_run }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: steps.manifest.outputs.mac == 'true'
+        with:
+          name: intel-verification-${{ inputs.build_run }}
+          path: project/.release-out/intel
+          run-id: ${{ inputs.build_run }}
+          github-token: ${{ github.token }}
+      - name: Recheck all bytes and create the release without rebuilding
+        working-directory: project
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.manifest.outputs.version }}
+          RELEASE_KIT_SHA: ${{ steps.manifest.outputs.toolkit }}
+        run: node .release-kit/bin/release.mjs publish
+      - name: Preserve release provenance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: promoted-release-manifest-${{ github.run_id }}
+          path: project/.release-out/release/*
+          if-no-files-found: error
+          retention-days: 30
