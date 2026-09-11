@@ -10,7 +10,7 @@
 - `source_ref`：包含接入配置的分支或提交，通常为 `main`。
 - `mode`：`check` 只检查条件；`artifacts` 构建下载包；`draft` 创建 Release 草稿；`prerelease` 仅对明确允许的项目开放。
 
-初始版本支持测试签名：Windows 未签名、macOS 完整 ad-hoc 且未公证。没有实现正式证书签名时会直接拒绝相应配置，不把测试签名描述成正式签名。
+初始版本支持测试签名：Windows 未签名、macOS 应用使用 ad-hoc，未公证。第三方原生组件按项目指南保留或签名，并验证其字节和架构；例如 Bot 的飞书组件保留已批准的原始字节。没有实现正式证书签名时会直接拒绝相应配置，不把测试签名描述成正式签名。
 
 ### 已经有成功的 Artifacts
 
@@ -112,6 +112,17 @@ Artifacts 默认保存 30 天，candidate/诊断保存 14 天。Release 资产�
 - [OpenMausBot](https://github.com/rj-liukaiwen/OpenMausBot)：pnpm 项目，复用已有测试打包、精确 browser vendor、Feishu 分架构运行时和 Universal 签名检查。测试发布沿用仓库所有者批准的策略；正式发布验收仍独立保留。
 
 执行结果以各项目 Actions 为准，接入文件存在不代表所有平台已经成功构建。
+
+### 已验证的首批发布
+
+2026-09-11，两项目均通过 Windows x64、Linux x64、macOS Universal 构建和自动检查，并由原生 Intel Mac 复验同一个 Universal DMG。
+
+| 项目 | 完整构建 | Release 草稿 |
+| --- | --- | --- |
+| 锐捷 Bot v0.1.75 | [34573312960](https://github.com/rj-liukaiwen/OpenMausBot/actions/runs/34573312960) | [22 个资产](https://github.com/rj-liukaiwen/OpenMausBot/releases/tag/untagged-185e3566c58f250f1717) |
+| 锐捷 Harness v2.1.6 | [34575616183](https://github.com/rj-liukaiwen/ruijie-harness/actions/runs/34575616183) | [6 个资产](https://github.com/rj-liukaiwen/ruijie-harness/releases/tag/untagged-e89d3b3449448a40bd6b) |
+
+Bot 另外通过了 [从成功 Artifacts 生成草稿](https://github.com/rj-liukaiwen/OpenMausBot/actions/runs/34574890072) 的完整流程。上述结论是自动检查结果；真人账号、实体设备 TCC、升级和 Linux 发行版覆盖仍按项目指南验收。
 
 ## 验证与扩展
 
