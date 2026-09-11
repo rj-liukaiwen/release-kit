@@ -1,0 +1,230 @@
+name: Reusable desktop release
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      source_ref:
+        required: false
+        type: string
+        default: main
+      mode:
+        required: false
+        type: string
+        default: draft
+      config:
+        required: false
+        type: string
+        default: .release/config.json
+      toolkit_sha:
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: desktop-release-${{ github.repository }}-${{ inputs.version }}
+  cancel-in-progress: false
+env:
+  RELEASE_VERSION: ${{ inputs.version }}
+  RELEASE_MODE: ${{ inputs.mode }}
+  RELEASE_CONFIG: ${{ inputs.config }}
+  RELEASE_KIT_SHA: ${{ inputs.toolkit_sha }}
+  CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+  DSH_TELEMETRY_DISABLED: '1'
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      sha: ${{ steps.prepare.outputs.sha }}
+      version: ${{ steps.prepare.outputs.version }}
+      node: ${{ steps.prepare.outputs.node }}
+      matrix: ${{ steps.prepare.outputs.matrix }}
+      build: ${{ steps.prepare.outputs.build }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_ref }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: rj-liukaiwen/release-kit
+          ref: ${{ inputs.toolkit_sha }}
+          path: .release-kit
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24.12.0'
+      - name: Check requirements and pin one versioned source commit
+        id: prepare
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .release-kit/bin/release.mjs prepare
+      - name: Preserve preflight report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-preflight-${{ github.run_id }}
+          path: .release-out/preflight.json
+          if-no-files-found: warn
+          retention-days: 30
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.build == 'true'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    env:
+      RELEASE_TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+          submodules: recursive
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: rj-liukaiwen/release-kit
+          ref: ${{ inputs.toolkit_sha }}
+          path: .release-kit
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ needs.prepare.outputs.node }}
+      - name: Enable pinned package manager
+        run: corepack enable
+      - name: Install Linux build and test dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb dbus-x11 libfuse2 squashfs-tools libnss3 libatk-bridge2.0-0 libgtk-3-0 libasound2t64 libgbm1 libx11-xcb1 rpm
+      - name: Install project dependencies
+        run: node .release-kit/bin/release.mjs install
+      - name: Build and verify candidate structure
+        if: runner.os != 'Linux'
+        run: node .release-kit/bin/release.mjs build
+      - name: Build Linux under isolated virtual display
+        if: runner.os == 'Linux'
+        run: dbus-run-session -- xvfb-run -a node .release-kit/bin/release.mjs build
+      - name: Preserve immutable candidate before acceptance
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-${{ matrix.target }}-${{ github.run_id }}
+          path: .release-out/candidate/*
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+      - name: Verify final candidate
+        if: runner.os != 'Linux'
+        run: node .release-kit/bin/release.mjs verify
+      - name: Verify Linux final candidate
+        if: runner.os == 'Linux'
+        run: dbus-run-session -- xvfb-run -a node .release-kit/bin/release.mjs verify
+      - name: Upload verified platform assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}-${{ github.run_id }}
+          path: .release-out/assets/*
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+      - name: Preserve diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-${{ matrix.target }}-${{ github.run_id }}
+          path: .release-out/evidence/**
+          if-no-files-found: warn
+          retention-days: 14
+  intel:
+    name: Verify same Universal DMG on native Intel
+    needs: [prepare, build]
+    if: contains(needs.prepare.outputs.matrix, 'macos-universal')
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    env:
+      RELEASE_TARGET: macos-universal
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+          submodules: recursive
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: rj-liukaiwen/release-kit
+          ref: ${{ inputs.toolkit_sha }}
+          path: .release-kit
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ needs.prepare.outputs.node }}
+      - run: corepack enable
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-macos-universal-${{ github.run_id }}
+          path: .release-out/intel-input
+      - run: node .release-kit/bin/release.mjs install
+      - run: node .release-kit/bin/release.mjs verify-intel
+      - uses: actions/upload-artifact@v4
+        with:
+          name: intel-verification-${{ github.run_id }}
+          path: .release-out/intel-verification.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Preserve Intel diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-intel-${{ github.run_id }}
+          path: .release-out/evidence/**
+          if-no-files-found: warn
+          retention-days: 14
+  publish:
+    needs: [prepare, build, intel]
+    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.intel.result == 'success' || needs.intel.result == 'skipped') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: rj-liukaiwen/release-kit
+          ref: ${{ inputs.toolkit_sha }}
+          path: .release-kit
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24.12.0'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*-*-${{ github.run_id }}
+          path: .release-out/downloaded
+      - uses: actions/download-artifact@v4
+        if: needs.intel.result == 'success'
+        with:
+          name: intel-verification-${{ github.run_id }}
+          path: .release-out/intel
+      - name: Verify hashes and assemble release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .release-kit/bin/release.mjs publish
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-manifest-${{ github.run_id }}
+          path: .release-out/release/*
+          if-no-files-found: error
+          retention-days: 30
