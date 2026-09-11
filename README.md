@@ -60,9 +60,10 @@ ES module 导出：
 | 方法 | 责任 |
 | --- | --- |
 | `preflight(context)` | 不安装依赖即可检查外部组件、锁文件、架构、授权范围和缺项；返回 `{blockers, notes}` |
+| `prepareFiles(context)` | 可选，返回 `[{path, content}]`，把本项目的发布元数据写入同一个候选提交；不能覆盖版本文件 |
 | `install(context)` | 安装锁定依赖；不能静默升级依赖图 |
 | `build(context)` | 执行项目检查、构建、签名、最终包结构检查 |
-| `assets(context)` | 返回明确的文件白名单 `[{path, name?}]`，不能整个输出目录上传 |
+| `assets(context)` | 返回明确的文件白名单 `[{path, name?, kind?}]`；只有显式标记 `kind: 'update-feed'` 的标准 latest YAML 可省略版本号 |
 | `verify(context)` | 验证最终安装包；需人工完成的项目写入报告 |
 | `verifyIntel(context)` | 校验下载的同一 Universal 包哈希，在原生 Intel Mac 验证 |
 
@@ -102,7 +103,7 @@ Artifacts 默认保存 30 天，candidate/诊断保存 14 天。Release 资产�
 ## 首批项目
 
 - [ruijie-harness](https://github.com/rj-liukaiwen/ruijie-harness)：Yarn + electron-builder，Windows NSIS、Linux AppImage/deb、macOS Universal DMG，保留原有签名与验收。
-- [OpenMausBot](https://github.com/rj-liukaiwen/OpenMausBot)：pnpm 项目，接入预检；新版本的精确 Windows vendor、Mac Feishu Universal 和验收回执仍需满足，不能沿用旧版成功结论。
+- [OpenMausBot](https://github.com/rj-liukaiwen/OpenMausBot)：pnpm 项目，复用已有测试打包、精确 browser vendor、Feishu 分架构运行时和 Universal 签名检查。测试发布沿用仓库所有者批准的策略；正式发布验收仍独立保留。
 
 执行结果以各项目 Actions 为准，接入文件存在不代表所有平台已经成功构建。
 

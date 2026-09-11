@@ -3,7 +3,7 @@ import { appendFile, mkdir, readFile, writeFile, readdir } from 'node:fs/promise
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { validateConfig, version, regular, stageFiles, collectRelease, digest } from '../lib/core.mjs';
+import { validateConfig, version, regular, stageFiles, collectRelease, digest, preparedFiles } from '../lib/core.mjs';
 import { api, absent } from '../lib/github.mjs';
 
 const root = process.cwd();
@@ -30,7 +30,9 @@ const base = `/repos/${repository}`;
 try {
   if (phase === 'prepare') {
     assert(/^[\w.-]+\/[\w.-]+$/.test(repository), 'Invalid repository');
-    const preflight = await adapter.preflight(context);
+    let preflight;
+    try { preflight = await adapter.preflight(context); }
+    catch (error) { preflight = { blockers: [error.message], notes: [] }; }
     const result = { ...preflight, sourceSha, version: requested, toolkitSha, mode, targets: config.targets };
     await writeFile(path.join(out, 'preflight.json'), JSON.stringify(result, null, 2) + '\n');
     await report(`## ${config.name} v${requested}\n\nSource: \`${sourceSha}\`\n\n${(preflight.notes || []).map(s => `- ${s}`).join('\n')}\n\n${(preflight.blockers || []).map(s => `- BLOCKED: ${s}`).join('\n')}`);
@@ -49,6 +51,12 @@ try {
       if (content === original) continue;
       const blob = await api(`${base}/git/blobs`, { method: 'POST', body: { content, encoding: 'utf-8' } });
       treeEntries.push({ path: file, mode: '100644', type: 'blob', sha: blob.sha });
+    }
+    if (adapter.prepareFiles) {
+      for (const { path: file, content } of preparedFiles(root, await adapter.prepareFiles(context), config.versionFiles)) {
+        const blob = await api(`${base}/git/blobs`, { method: 'POST', body: { content, encoding: 'utf-8' } });
+        treeEntries.push({ path: file, mode: '100644', type: 'blob', sha: blob.sha });
+      }
     }
     let sha = sourceSha;
     if (treeEntries.length) {

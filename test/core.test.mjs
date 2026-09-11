@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { version, inside, regular, stageFiles, collectRelease, validateConfig } from '../lib/core.mjs';
+import { version, inside, regular, stageFiles, collectRelease, validateConfig, preparedFiles } from '../lib/core.mjs';
 
 test('rejects shell payloads and ambiguous versions before running a project', () => {
   assert.equal(version('v2.1.6'), '2.1.6');
@@ -15,6 +15,25 @@ test('requires explicit architecture and signing support', () => {
   validateConfig(config);
   assert.throws(() => validateConfig({ ...config, targets: ['macos-arm64-renamed-universal'] }));
   assert.throws(() => validateConfig({ ...config, signing: 'developer-id' }));
+});
+
+test('prepared metadata cannot escape, alias or override version files', () => {
+  const root = process.cwd();
+  const entry = {path:'build/release.json', content:'{}'};
+  assert.deepEqual(preparedFiles(root, [entry], ['package.json']), [entry]);
+  for (const file of ['../outside', 'build/../package.json', 'package.json', 'PACKAGE.json']) {
+    assert.throws(() => preparedFiles(root, [{...entry,path:file}], ['package.json']));
+  }
+  assert.throws(() => preparedFiles(root, [entry,entry], []));
+});
+
+test('only explicitly marked standard update feeds may omit the version', async t => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'release-kit-')); t.after(() => rm(dir, {recursive:true,force:true}));
+  const metadata = {version:'1.2.3',target:'windows-x64'};
+  for (const name of ['latest.yml','unrelated.yml']) await writeFile(path.join(dir,name),'version: 1.2.3');
+  await stageFiles(dir,path.join(dir,'accepted'),[{path:'latest.yml',kind:'update-feed'}],metadata);
+  await assert.rejects(() => stageFiles(dir,path.join(dir,'rejected'),[{path:'latest.yml'}],metadata));
+  await assert.rejects(() => stageFiles(dir,path.join(dir,'rejected'),[{path:'unrelated.yml',kind:'update-feed'}],metadata));
 });
 test('rejects traversal and symlinked assets', async t => {
   const dir = await mkdtemp(path.join(tmpdir(), 'release-kit-')); t.after(() => rm(dir, {recursive:true,force:true}));

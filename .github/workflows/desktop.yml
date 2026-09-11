@@ -66,7 +66,7 @@ jobs:
         run: node .release-kit/bin/release.mjs prepare
       - name: Preserve preflight report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-preflight-${{ github.run_id }}
           path: .release-out/preflight.json
@@ -104,7 +104,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb dbus-x11 libfuse2 squashfs-tools libnss3 libatk-bridge2.0-0 libgtk-3-0 libasound2t64 libgbm1 libx11-xcb1 rpm
+          sudo apt-get install -y xvfb dbus-x11 libfuse2 squashfs-tools libnss3 libatk-bridge2.0-0 libgtk-3-0 libasound2t64 libgbm1 libx11-xcb1 rpm at-spi2-core desktop-file-utils libxi6 libxkbcommon0 x11-utils xdotool
       - name: Install project dependencies
         run: node .release-kit/bin/release.mjs install
       - name: Build and verify candidate structure
@@ -114,7 +114,7 @@ jobs:
         if: runner.os == 'Linux'
         run: dbus-run-session -- xvfb-run -a node .release-kit/bin/release.mjs build
       - name: Preserve immutable candidate before acceptance
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: candidate-${{ matrix.target }}-${{ github.run_id }}
           path: .release-out/candidate/*
@@ -128,7 +128,7 @@ jobs:
         if: runner.os == 'Linux'
         run: dbus-run-session -- xvfb-run -a node .release-kit/bin/release.mjs verify
       - name: Upload verified platform assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-${{ matrix.target }}-${{ github.run_id }}
           path: .release-out/assets/*
@@ -137,7 +137,7 @@ jobs:
           compression-level: 0
       - name: Preserve diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: evidence-${{ matrix.target }}-${{ github.run_id }}
           path: .release-out/evidence/**
@@ -168,13 +168,13 @@ jobs:
         with:
           node-version: ${{ needs.prepare.outputs.node }}
       - run: corepack enable
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: release-macos-universal-${{ github.run_id }}
           path: .release-out/intel-input
       - run: node .release-kit/bin/release.mjs install
       - run: node .release-kit/bin/release.mjs verify-intel
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: intel-verification-${{ github.run_id }}
           path: .release-out/intel-verification.json
@@ -182,7 +182,7 @@ jobs:
           retention-days: 30
       - name: Preserve Intel diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: evidence-intel-${{ github.run_id }}
           path: .release-out/evidence/**
@@ -209,11 +209,11 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '24.12.0'
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           pattern: release-*-*-${{ github.run_id }}
           path: .release-out/downloaded
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         if: needs.intel.result == 'success'
         with:
           name: intel-verification-${{ github.run_id }}
@@ -222,7 +222,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node .release-kit/bin/release.mjs publish
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-manifest-${{ github.run_id }}
           path: .release-out/release/*
