@@ -4,7 +4,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { validateConfig, version, regular, stageFiles, collectRelease, digest, preparedFiles } from '../lib/core.mjs';
-import { api, absent } from '../lib/github.mjs';
+import { api, absent, orphanedTag } from '../lib/github.mjs';
 
 const root = process.cwd();
 const phase = process.argv[2];
@@ -38,7 +38,6 @@ try {
     await report(`## ${config.name} v${requested}\n\nSource: \`${sourceSha}\`\n\n${(preflight.notes || []).map(s => `- ${s}`).join('\n')}\n\n${(preflight.blockers || []).map(s => `- BLOCKED: ${s}`).join('\n')}`);
     assert(!preflight.blockers?.length, 'Preflight blocked; see the summary for required inputs.');
     if (mode === 'prerelease') assert(config.allowPrerelease === true, 'Project requires final acceptance before public prerelease. Build artifacts/draft first.');
-    await absent(`${base}/git/ref/tags/v${requested}`);
     await absent(`${base}/releases/tags/v${requested}`);
     if (mode === 'check') { await output('build', 'false'); process.exit(0); }
     const treeEntries = [];
@@ -66,7 +65,8 @@ try {
       sha = commit.sha;
       await api(`${base}/git/refs`, { method: 'POST', body: { ref: `refs/heads/release-candidates/v${requested}-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}`, sha } });
     }
-    const runners = { 'windows-x64': 'windows-2025', 'linux-x64': 'ubuntu-24.04', 'macos-universal': 'macos-15' };
+    const reusedOrphanedTag = await orphanedTag(`${base}/git/ref/tags/v${requested}`, sha);
+    if (reusedOrphanedTag) await report(`Reusing the matching orphaned tag v${requested}; no Release or uploaded assets exist.`);`n    const runners = { 'windows-x64': 'windows-2025', 'linux-x64': 'ubuntu-24.04', 'macos-universal': 'macos-15' };
     await output('sha', sha); await output('version', requested); await output('node', config.node);
     await output('matrix', { include: config.targets.map(target => ({ target, os: runners[target] })) });
     await output('build', 'true');
@@ -101,7 +101,8 @@ try {
     if (mode === 'artifacts') { await report('All configured platforms verified. Artifacts are ready; no GitHub Release requested.'); process.exit(0); }
     assert(mode === 'draft' || config.allowPrerelease === true, 'Public prerelease is disabled for this project');
     await absent(`${base}/releases/tags/v${requested}`);
-    await absent(`${base}/git/ref/tags/v${requested}`);
+    const reusedOrphanedTag = await orphanedTag(`${base}/git/ref/tags/v${requested}`, sourceSha);
+    if (reusedOrphanedTag) await report(`Reusing the matching orphaned tag v${requested}; no Release or uploaded assets exist.`);
     const body = `Testing candidate v${requested}\n\nSource: ${sourceSha}\nToolchain: rj-liukaiwen/release-kit@${toolkitSha}\nRun: https://github.com/${repository}/actions/runs/${process.env.GITHUB_RUN_ID}\n\nWindows: unsigned. macOS: ad-hoc signed, not notarized.\nAutomated checks: passed on the configured platforms, including native Intel verification of the same macOS Universal package.\nHuman login, TCC, and upgrade acceptance: not performed by release-kit. See the project delivery guides before promoting this candidate.\n\n${(config.releaseNotes || []).join('\n')}`;
     // Assemble invisibly, verify every upload, then expose only when explicitly allowed.
     const release = await api(`${base}/releases`, { method: 'POST', body: { tag_name: `v${requested}`, target_commitish: sourceSha, name: `${config.name} v${requested} (testing candidate)`, body, draft: true, prerelease: true } });
