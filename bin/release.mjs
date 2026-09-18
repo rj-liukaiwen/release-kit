@@ -66,7 +66,7 @@ try {
       await api(`${base}/git/refs`, { method: 'POST', body: { ref: `refs/heads/release-candidates/v${requested}-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}`, sha } });
     }
     const reusedOrphanedTag = await orphanedTag(`${base}/git/ref/tags/v${requested}`, sha);
-    if (reusedOrphanedTag) await report(Reusing the matching orphaned tag v${requested}; no Release or uploaded assets exist.);
+    if (reusedOrphanedTag) await report(`Reusing the matching orphaned tag v${requested}; no Release or uploaded assets exist.`);
     const runners = { 'windows-x64': 'windows-2025', 'linux-x64': 'ubuntu-24.04', 'macos-universal': 'macos-15' };
     await output('sha', sha); await output('version', requested); await output('node', config.node);
     await output('matrix', { include: config.targets.map(target => ({ target, os: runners[target] })) });
