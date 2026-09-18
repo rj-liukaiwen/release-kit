@@ -20,6 +20,9 @@ on:
       toolkit_sha:
         required: true
         type: string
+    secrets:
+      RELEASE_TOKEN:
+        required: false
 permissions:
   contents: read
 concurrency:
@@ -62,7 +65,7 @@ jobs:
       - name: Check requirements and pin one versioned source commit
         id: prepare
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
         run: node .release-kit/bin/release.mjs prepare
       - name: Preserve preflight report
         if: always()
@@ -220,7 +223,7 @@ jobs:
           path: .release-out/intel
       - name: Verify hashes and assemble release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
         run: node .release-kit/bin/release.mjs publish
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
